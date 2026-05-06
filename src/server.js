@@ -149,10 +149,15 @@ async function handleParse(req, res) {
   });
   const fetchMetadata = body.fetchMetadata === true;
 
-  if (fetchMetadata && result.resolved.awemeId) {
+  if (fetchMetadata && result.resolved.resourceId) {
     result.metadata = await fetchWorkDetail(
       {
+        platform: result.platform,
+        resourceId: result.resolved.resourceId,
         awemeId: result.resolved.awemeId,
+        bvid: result.resolved.bvid,
+        aid: result.resolved.aid,
+        page: result.resolved.page,
         resolvedUrl: result.resolved.finalUrl,
         typeHint: result.resolved.resourceTypeHint,
       },
@@ -164,7 +169,9 @@ async function handleParse(req, res) {
   }
 
   logger.info("parse.success", {
+    platform: result.platform,
     status: result.status,
+    resourceId: result.resolved.resourceId,
     awemeId: result.resolved.awemeId,
     resourceTypeHint: result.resolved.resourceTypeHint,
     metadataIncluded: Boolean(result.metadata),
@@ -185,13 +192,29 @@ async function handleDetail(req, res) {
   });
   const body = await readJsonBody(req);
 
-  const awemeId = typeof body.awemeId === "string" ? body.awemeId : "";
+  const platform = typeof body.platform === "string" ? body.platform : "";
+  const awemeId =
+    typeof body.awemeId === "string"
+      ? body.awemeId
+      : typeof body.resourceId === "string"
+        ? body.resourceId
+        : "";
+  const bvid = typeof body.bvid === "string" ? body.bvid : "";
+  const aid = typeof body.aid === "string" ? body.aid : "";
+  const page =
+    Number.isInteger(body.page) && body.page > 0
+      ? body.page
+      : Number.parseInt(String(body.page || ""), 10) || null;
   const resolvedUrl = typeof body.resolvedUrl === "string" ? body.resolvedUrl : "";
   const typeHint = typeof body.typeHint === "string" ? body.typeHint : "";
 
   logger.info("detail.start", {
     ip: context.ip,
+    platform,
     awemeId,
+    bvid,
+    aid,
+    page,
     typeHint,
     hasResolvedUrl: Boolean(resolvedUrl),
     includeDebug: body.includeDebug === true,
@@ -199,7 +222,12 @@ async function handleDetail(req, res) {
 
   const detail = await fetchWorkDetail(
     {
+      platform,
+      resourceId: awemeId,
       awemeId,
+      bvid,
+      aid,
+      page,
       resolvedUrl,
       typeHint,
     },
@@ -210,6 +238,8 @@ async function handleDetail(req, res) {
   );
 
   logger.info("detail.success", {
+    platform: detail.platform,
+    resourceId: detail.resourceId,
     awemeId: detail.awemeId,
     mediaType: detail.mediaType,
     sourceCount: detail.sources.length,
@@ -233,7 +263,11 @@ async function handleDownloadPrepare(req, res) {
 
   logger.info("download.prepare.start", {
     ip: context.ip,
-    awemeId: body.awemeId || "",
+    platform: body.platform || "",
+    awemeId: body.awemeId || body.resourceId || "",
+    bvid: body.bvid || "",
+    aid: body.aid || "",
+    page: body.page || "",
     sourceId: body.sourceId || "",
     imageId: body.imageId || "",
     typeHint: body.typeHint || "",
@@ -244,6 +278,8 @@ async function handleDownloadPrepare(req, res) {
   });
 
   logger.info("download.prepare.success", {
+    platform: result.platform,
+    resourceId: result.resourceId,
     awemeId: result.awemeId,
     assetType: result.assetType,
     assetId: result.assetId,

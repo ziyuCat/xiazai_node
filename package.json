@@ -2,13 +2,14 @@
   "name": "universal-downloader-backend",
   "version": "0.1.0",
   "private": true,
-  "description": "Minimal backend for parsing Douyin share text.",
+  "description": "Minimal backend for parsing and downloading Douyin and Bilibili share links.",
   "type": "commonjs",
   "scripts": {
     "start": "node src/server.js",
     "check": "node scripts/check-parser.js",
     "check:detail": "node scripts/check-detail.js",
-    "check:download": "node scripts/check-download-prepare.js"
+    "check:download": "node scripts/check-download-prepare.js",
+    "check:bilibili": "node scripts/check-bilibili.js"
   },
   "engines": {
     "node": ">=20"

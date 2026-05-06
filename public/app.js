@@ -1,5 +1,9 @@
-const SAMPLE_TEXT =
-  "3.87 复制打开抖音，看看【小野猫史(日更版)的作品】当同事天天作秀内卷 #猫meme #小野猫史 https://v.douyin.com/oCzaAxEP5vk/ M@W.ZM GvF:/ 04/16";
+const SAMPLE_TEXTS = {
+  douyin:
+    "3.87 复制打开抖音，看看【小野猫可乐的作品】当同事天天作秀内卷 # meme https://v.douyin.com/oCzaAxEP5vk/ M@W.ZM GvF:/ 04/16",
+  bilibili:
+    "【腾势Z9GT怎么样？车不错但销量差-哔哩哔哩】 https://b23.tv/6oZ4Dxw",
+};
 
 const state = {
   parseResult: null,
@@ -14,7 +18,8 @@ const elements = {
   fetchMetadata: document.getElementById("fetch-metadata"),
   parseButton: document.getElementById("parse-button"),
   clearButton: document.getElementById("clear-button"),
-  fillSampleButton: document.getElementById("fill-sample"),
+  fillDouyinSampleButton: document.getElementById("fill-douyin-sample"),
+  fillBilibiliSampleButton: document.getElementById("fill-bilibili-sample"),
   refreshDetailButton: document.getElementById("refresh-detail"),
   prepareDownloadButton: document.getElementById("prepare-download"),
   statusBar: document.getElementById("status-bar"),
@@ -62,6 +67,37 @@ function buildCover(url) {
   return `<img class="cover-preview" src="${escapeHtml(url)}" alt="封面预览" />`;
 }
 
+function getResourceId(data) {
+  return data?.resourceId || data?.awemeId || "";
+}
+
+function formatResolvedTarget(data) {
+  const finalUrl = data?.finalUrl || "";
+  if (!finalUrl) {
+    return "";
+  }
+
+  return finalUrl;
+}
+
+function buildPlatformExtraInfo(resolved) {
+  if (!resolved) {
+    return "";
+  }
+
+  const items = [];
+  if (resolved.bvid) {
+    items.push(`<span class="pill">BVID ${escapeHtml(resolved.bvid)}</span>`);
+  }
+  if (resolved.aid) {
+    items.push(`<span class="pill">AID ${escapeHtml(resolved.aid)}</span>`);
+  }
+  if (resolved.page) {
+    items.push(`<span class="pill">分P ${String(resolved.page)}</span>`);
+  }
+  return items.join("");
+}
+
 function renderParseSummary() {
   const data = state.parseResult;
   if (!data) {
@@ -77,24 +113,43 @@ function renderParseSummary() {
     <div class="summary-meta">
       <div><strong>平台：</strong>${escapeHtml(data.platform)}</div>
       <div><strong>状态：</strong>${escapeHtml(data.status)}</div>
-      <div><strong>作品 ID：</strong>${escapeHtml(data.resolved.awemeId || "未提取")}</div>
-      <div><strong>最终链接：</strong>${escapeHtml(data.resolved.finalUrl || data.input.shareUrl || "")}</div>
+      <div><strong>资源 ID：</strong>${escapeHtml(getResourceId(data.resolved) || "未提取")}</div>
+      <div><strong>最终链接：</strong>${escapeHtml(formatResolvedTarget(data.resolved) || data.input.shareUrl || "")}</div>
       <div><strong>类型提示：</strong>${escapeHtml(data.resolved.resourceTypeHint || data.type)}</div>
     </div>
     <div class="pill-row">
-      <span class="pill">分享口令 ${escapeHtml(data.input.shareCode || "无")}</span>
-      <span class="pill">文案长度 ${String(data.input.rawText.length)}</span>
+      ${data.input.shareCode ? `<span class="pill">分享口令 ${escapeHtml(data.input.shareCode)}</span>` : ""}
+      <span class="pill">文本长度 ${String(data.input.rawText.length)}</span>
+      ${buildPlatformExtraInfo(data.resolved)}
     </div>
   `;
 
   setJson(elements.parseJson, data);
 }
 
+function buildDetailPills(data) {
+  const pills = [];
+
+  if (data.durationMs) {
+    pills.push(`<span class="pill">时长 ${Math.round(data.durationMs / 1000)}s</span>`);
+  }
+  pills.push(`<span class="pill">点赞 ${String(data.statistics.diggCount || 0)}</span>`);
+  pills.push(`<span class="pill">评论 ${String(data.statistics.commentCount || 0)}</span>`);
+  if (data.platform === "bilibili" && data.page) {
+    pills.push(`<span class="pill">分P ${String(data.page)}</span>`);
+  }
+  if (data.platform === "bilibili" && data.part && data.part !== data.title) {
+    pills.push(`<span class="pill">标题分段 ${escapeHtml(data.part)}</span>`);
+  }
+  return pills.join("");
+}
+
 function renderDetailSummary() {
   const data = state.detailResult;
   if (!data) {
     elements.detailSummary.className = "summary-card empty-state";
-    elements.detailSummary.textContent = "解析出作品 ID 后，这里会展示标题、作者、封面和资源列表。";
+    elements.detailSummary.textContent =
+      "解析出资源 ID 后，这里会展示标题、作者、封面和可下载资源列表。";
     elements.resourcePicker.classList.add("hidden");
     elements.resourceSelect.innerHTML = "";
     setJson(elements.detailJson, null);
@@ -105,16 +160,15 @@ function renderDetailSummary() {
   elements.detailSummary.innerHTML = `
     <h3>${escapeHtml(data.title || "未提取到标题")}</h3>
     <div class="summary-meta">
+      <div><strong>平台：</strong>${escapeHtml(data.platform)}</div>
       <div><strong>作者：</strong>${escapeHtml(data.author.nickname || "未知作者")}</div>
       <div><strong>类型：</strong>${escapeHtml(data.mediaType)}</div>
-      <div><strong>作品 ID：</strong>${escapeHtml(data.awemeId)}</div>
+      <div><strong>资源 ID：</strong>${escapeHtml(getResourceId(data) || "未知")}</div>
       <div><strong>视频源：</strong>${String(data.sources.length)} 个</div>
       <div><strong>图片：</strong>${String(data.images.length)} 张</div>
     </div>
     <div class="pill-row">
-      ${data.durationMs ? `<span class="pill">时长 ${Math.round(data.durationMs / 1000)}s</span>` : ""}
-      <span class="pill">点赞 ${String(data.statistics.diggCount)}</span>
-      <span class="pill">评论 ${String(data.statistics.commentCount)}</span>
+      ${buildDetailPills(data)}
     </div>
     ${buildCover(data.cover)}
   `;
@@ -143,7 +197,7 @@ function renderDownloadSummary() {
   const data = state.downloadResult;
   if (!data) {
     elements.downloadSummary.className = "download-card empty-state";
-    elements.downloadSummary.textContent = "先完成解析并获取详情，再生成下载票据。";
+    elements.downloadSummary.textContent = "先完成解析并获取详情，再生成下载地址。";
     setJson(elements.downloadJson, null);
     return;
   }
@@ -152,6 +206,8 @@ function renderDownloadSummary() {
   elements.downloadSummary.innerHTML = `
     <h3>${escapeHtml(data.fileName)}</h3>
     <div class="download-meta">
+      <div><strong>平台：</strong>${escapeHtml(data.platform)}</div>
+      <div><strong>资源 ID：</strong>${escapeHtml(data.resourceId || data.awemeId)}</div>
       <div><strong>票据：</strong>${escapeHtml(data.ticket)}</div>
       <div><strong>资源类型：</strong>${escapeHtml(data.assetType)}</div>
       <div><strong>资源 ID：</strong>${escapeHtml(data.assetId)}</div>
@@ -187,12 +243,17 @@ async function requestJson(url, payload) {
 
 function buildDetailPayloadFromState() {
   const parse = state.parseResult;
-  if (!parse || !parse.resolved.awemeId) {
-    throw new Error("还没有拿到 awemeId，请先完成解析。");
+  if (!parse || !parse.resolved.resourceId) {
+    throw new Error("还没有拿到资源 ID，请先完成解析。");
   }
 
   return {
+    platform: parse.platform,
+    resourceId: parse.resolved.resourceId,
     awemeId: parse.resolved.awemeId,
+    bvid: parse.resolved.bvid,
+    aid: parse.resolved.aid,
+    page: parse.resolved.page,
     resolvedUrl: parse.resolved.finalUrl,
     typeHint: parse.resolved.resourceTypeHint,
     includeDebug: elements.includeDebug.checked,
@@ -227,7 +288,7 @@ async function handleParse() {
     setStatus(
       result.metadata
         ? "解析和详情抓取都完成了，可以直接生成下载地址。"
-        : "解析完成了，接下来可以单独抓作品详情。",
+        : "解析完成了，接下来可以单独抓取作品详情。",
       "normal",
     );
   } catch (error) {
@@ -248,7 +309,7 @@ async function handleRefreshDetail() {
     state.downloadResult = null;
     renderDetailSummary();
     renderDownloadSummary();
-    setStatus("详情刷新完成，现在可以选资源生成下载地址。", "normal");
+    setStatus("详情刷新完成，现在可以选择资源生成下载地址。", "normal");
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
@@ -264,7 +325,13 @@ async function handlePrepareDownload() {
 
   const resourceId = elements.resourceSelect.value;
   const payload = {
+    platform: state.detailResult.platform,
+    resourceId: state.detailResult.resourceId,
     awemeId: state.detailResult.awemeId,
+    bvid: state.detailResult.bvid,
+    aid: state.detailResult.aid,
+    page: state.detailResult.page,
+    resolvedUrl: state.detailResult.sharePage?.pageUrl || "",
     typeHint: state.detailResult.mediaType,
   };
 
@@ -300,11 +367,14 @@ function clearAll() {
   setStatus("输入和结果都清空了。", "normal");
 }
 
+function fillSample(platform) {
+  elements.shareText.value = SAMPLE_TEXTS[platform];
+  setStatus(`已填充 ${platform} 示例文案，点击“开始解析”即可。`, "normal");
+}
+
 function bindEvents() {
-  elements.fillSampleButton.addEventListener("click", () => {
-    elements.shareText.value = SAMPLE_TEXT;
-    setStatus("示例文案已填充，点“开始解析”就行。", "normal");
-  });
+  elements.fillDouyinSampleButton.addEventListener("click", () => fillSample("douyin"));
+  elements.fillBilibiliSampleButton.addEventListener("click", () => fillSample("bilibili"));
   elements.parseButton.addEventListener("click", handleParse);
   elements.clearButton.addEventListener("click", clearAll);
   elements.refreshDetailButton.addEventListener("click", handleRefreshDetail);

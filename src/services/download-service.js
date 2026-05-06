@@ -6,11 +6,11 @@ const { fetchWorkDetail } = require("./detail-service");
 const { loadEnvFile, getEnv } = require("../utils/env");
 
 const DEFAULT_TICKET_TTL_MS = 10 * 60 * 1000;
+
 loadEnvFile();
+
 const DEFAULT_HOST = getEnv("PUBLIC_BASE_URL", "http://127.0.0.1:8787");
 
-// 先用内存票据存储把链路跑通，适合本地开发和单机验证。
-// 以后如果要多实例部署，再切 Redis 就行，接口层不用改。
 const ticketStore = new Map();
 
 function cleanupExpiredTickets() {
@@ -47,7 +47,7 @@ function ensureExtension(fileName, extension) {
 function inferExtensionFromUrl(url, fallback) {
   try {
     const pathname = new URL(url).pathname;
-    const match = pathname.match(/\.([a-zA-Z0-9]{2,5})$/);
+    const match = pathname.match(/\.([a-zA-Z0-9]{2,5})$/u);
     if (match) {
       return match[1].toLowerCase();
     }
@@ -59,13 +59,18 @@ function inferExtensionFromUrl(url, fallback) {
 }
 
 function buildVideoFileName(detail, source) {
-  const title = sanitizeFileName(detail.title || detail.awemeId);
-  const suffix = source.label ? `-${sanitizeFileName(source.label)}` : "";
-  return ensureExtension(`${title}${suffix}`, "mp4");
+  const title = sanitizeFileName(detail.title || detail.resourceId || detail.awemeId);
+  const pageSuffix =
+    detail.platform === "bilibili" && detail.page
+      ? `-p${detail.page}${detail.part && detail.part !== detail.title ? `-${sanitizeFileName(detail.part)}` : ""}`
+      : "";
+  const sourceSuffix = source.label ? `-${sanitizeFileName(source.label)}` : "";
+
+  return ensureExtension(`${title}${pageSuffix}${sourceSuffix}`, "mp4");
 }
 
 function buildImageFileName(detail, image, index) {
-  const title = sanitizeFileName(detail.title || detail.awemeId);
+  const title = sanitizeFileName(detail.title || detail.resourceId || detail.awemeId);
   const ext = inferExtensionFromUrl(image.downloadUrl || image.url, "jpg");
   return ensureExtension(`${title}-${index + 1}`, ext);
 }
@@ -78,15 +83,20 @@ function chooseAsset(detail, body) {
       : detail.sources[0];
 
     if (!source) {
-      throw new ParseError("SOURCE_NOT_FOUND", "未找到指定的视频源", 404, {
+      throw new ParseError("SOURCE_NOT_FOUND", "The requested video source was not found.", 404, {
         sourceId,
       });
     }
 
     if (!source.url) {
-      throw new ParseError("SOURCE_URL_MISSING", "当前视频源缺少可下载地址", 502, {
-        sourceId: source.id,
-      });
+      throw new ParseError(
+        "SOURCE_URL_MISSING",
+        "The selected video source does not include a download URL.",
+        502,
+        {
+          sourceId: source.id,
+        },
+      );
     }
 
     return {
@@ -106,16 +116,21 @@ function chooseAsset(detail, body) {
     : detail.images[0];
 
   if (!image) {
-    throw new ParseError("IMAGE_NOT_FOUND", "未找到指定的图片资源", 404, {
+    throw new ParseError("IMAGE_NOT_FOUND", "The requested image was not found.", 404, {
       imageId,
     });
   }
 
   const downloadUrl = image.downloadUrl || image.url;
   if (!downloadUrl) {
-    throw new ParseError("IMAGE_URL_MISSING", "当前图片资源缺少可下载地址", 502, {
-      imageId: image.id,
-    });
+    throw new ParseError(
+      "IMAGE_URL_MISSING",
+      "The selected image does not include a download URL.",
+      502,
+      {
+        imageId: image.id,
+      },
+    );
   }
 
   const index = detail.images.findIndex((item) => item.id === image.id);
@@ -144,9 +159,15 @@ function createTicketPayload(detail, asset, ttlMs) {
     ticket,
     createdAt: now,
     expiresAt,
+    platform: detail.platform || "douyin",
+    resourceId: detail.resourceId || detail.awemeId,
     awemeId: detail.awemeId,
+    bvid: detail.bvid || "",
+    aid: detail.aid || "",
+    page: detail.page || null,
     mediaType: detail.mediaType,
     title: detail.title,
+    part: detail.part || "",
     author: detail.author?.nickname || "",
     sharePage: detail.sharePage,
     asset,
@@ -159,9 +180,16 @@ function createTicketPayload(detail, asset, ttlMs) {
 }
 
 async function prepareDownload(body, options = {}) {
-  const awemeId = String(body.awemeId || "").trim();
+  const awemeId = String(body.awemeId || body.resourceId || "").trim();
   const resolvedUrl = String(body.resolvedUrl || "").trim();
-  const typeHint = String(body.typeHint || "").trim();
+  const typeHint = String(body.typeHint || body.resourceTypeHint || "").trim();
+  const platform = String(body.platform || "").trim().toLowerCase();
+  const bvid = String(body.bvid || "").trim();
+  const aid = String(body.aid || "").trim();
+  const page =
+    Number.isInteger(body.page) && body.page > 0
+      ? body.page
+      : Number.parseInt(String(body.page || ""), 10) || null;
   const logger = options.logger;
   const ttlMs =
     Number.isFinite(options.ttlMs) && options.ttlMs > 0
@@ -169,16 +197,25 @@ async function prepareDownload(body, options = {}) {
       : DEFAULT_TICKET_TTL_MS;
 
   logger?.info("download.prepare.detail_fetch", {
+    platform,
     awemeId,
+    bvid,
+    aid,
+    page,
     typeHint,
     hasResolvedUrl: Boolean(resolvedUrl),
   });
 
   const detail = await fetchWorkDetail(
     {
+      platform,
       awemeId,
+      resourceId: awemeId,
       resolvedUrl,
       typeHint,
+      bvid,
+      aid,
+      page,
     },
     {
       includeDebug: false,
@@ -190,7 +227,8 @@ async function prepareDownload(body, options = {}) {
   const ticketPayload = createTicketPayload(detail, asset, ttlMs);
 
   logger?.info("download.prepare.ticket_created", {
-    awemeId: detail.awemeId,
+    platform: detail.platform,
+    resourceId: detail.resourceId,
     mediaType: detail.mediaType,
     assetType: asset.assetType,
     assetId: asset.assetId,
@@ -200,7 +238,12 @@ async function prepareDownload(body, options = {}) {
 
   return {
     ticket: ticketPayload.ticket,
+    platform: detail.platform,
+    resourceId: detail.resourceId,
     awemeId: detail.awemeId,
+    bvid: detail.bvid || "",
+    aid: detail.aid || "",
+    page: detail.page || null,
     mediaType: detail.mediaType,
     assetType: asset.assetType,
     assetId: asset.assetId,
@@ -219,12 +262,12 @@ function getTicketOrThrow(ticket) {
 
   const payload = ticketStore.get(ticket);
   if (!payload) {
-    throw new ParseError("TICKET_NOT_FOUND", "下载票据不存在或已过期", 404);
+    throw new ParseError("TICKET_NOT_FOUND", "The download ticket does not exist or has expired.", 404);
   }
 
   if (payload.expiresAt <= Date.now()) {
     ticketStore.delete(ticket);
-    throw new ParseError("TICKET_EXPIRED", "下载票据已过期，请重新生成", 410);
+    throw new ParseError("TICKET_EXPIRED", "The download ticket expired. Please create a new one.", 410);
   }
 
   return payload;
@@ -237,7 +280,10 @@ function setDownloadHeaders(res, upstreamResponse, payload) {
 
   res.statusCode = 200;
   res.setHeader("Content-Type", type);
-  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(payload.asset.fileName)}`);
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename*=UTF-8''${encodeURIComponent(payload.asset.fileName)}`,
+  );
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Download-Ticket", payload.ticket);
 
@@ -246,22 +292,38 @@ function setDownloadHeaders(res, upstreamResponse, payload) {
   }
 }
 
+function buildDownloadHeaders(payload) {
+  const headers = {
+    "user-agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    referer:
+      payload.sharePage?.pageUrl ||
+      payload.sharePage?.sourceUrl ||
+      (payload.platform === "bilibili"
+        ? "https://www.bilibili.com/"
+        : "https://www.iesdouyin.com/"),
+  };
+
+  if (payload.platform === "bilibili") {
+    headers.origin = "https://www.bilibili.com";
+  }
+
+  return headers;
+}
+
 async function pipeTicketToResponse(ticket, res, options = {}) {
   const logger = options.logger;
   const payload = getTicketOrThrow(ticket);
   logger?.info("download.proxy.start", {
     ticket,
-    awemeId: payload.awemeId,
+    platform: payload.platform,
+    resourceId: payload.resourceId,
     assetType: payload.asset.assetType,
     assetId: payload.asset.assetId,
   });
 
   const upstreamResponse = await fetch(payload.asset.upstreamUrl, {
-    headers: {
-      "user-agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      referer: payload.sharePage?.pageUrl || payload.sharePage?.sourceUrl || "https://www.iesdouyin.com/",
-    },
+    headers: buildDownloadHeaders(payload),
     redirect: "follow",
   });
 
@@ -271,7 +333,7 @@ async function pipeTicketToResponse(ticket, res, options = {}) {
       status: upstreamResponse.status,
       upstreamUrl: payload.asset.upstreamUrl,
     });
-    throw new ParseError("DOWNLOAD_UPSTREAM_FAILED", "上游下载地址不可用", 502, {
+    throw new ParseError("DOWNLOAD_UPSTREAM_FAILED", "The upstream download URL is unavailable.", 502, {
       status: upstreamResponse.status,
       url: payload.asset.upstreamUrl,
     });
@@ -288,7 +350,7 @@ async function pipeTicketToResponse(ticket, res, options = {}) {
 }
 
 function matchDownloadFilePath(pathname) {
-  const match = pathname.match(/^\/api\/download\/file\/([a-zA-Z0-9_]+)$/);
+  const match = pathname.match(/^\/api\/download\/file\/([a-zA-Z0-9_]+)$/u);
   return match ? match[1] : null;
 }
 

@@ -8,8 +8,20 @@ const DOUYIN_HOSTS = new Set([
   "www.iesdouyin.com",
 ]);
 
-const URL_PATTERN = /https?:\/\/[^\s<>"'，。！？、）】]+/gi;
-const TRAILING_PUNCTUATION = /[)\]}>,.!?;:'"，。！？、）】]+$/g;
+const BILIBILI_HOSTS = new Set([
+  "b23.tv",
+  "www.b23.tv",
+  "bili2233.cn",
+  "www.bili2233.cn",
+  "www.bilibili.com",
+  "bilibili.com",
+  "m.bilibili.com",
+]);
+
+const URL_PATTERN = /https?:\/\/[^\s<>"'\u3000]+/giu;
+const TRAILING_PUNCTUATION =
+  /[)\]}>,.!?;:'"\u3002\uff0c\uff01\uff1f\u3001\u300b\u300d]+$/gu;
+const BILIBILI_TITLE_SUFFIX = /\s*[-_]\s*(?:哔哩哔哩|bilibili)\s*$/iu;
 
 class ParseError extends Error {
   constructor(code, message, statusCode = 400, details = null) {
@@ -34,25 +46,67 @@ function extractUrls(text) {
 }
 
 function extractQuotedTitle(text) {
-  const bracketMatch = text.match(/【([^】]+)】/);
-  if (bracketMatch) {
-    return bracketMatch[1].trim();
+  const patterns = [
+    /【([^】]+)】/u,
+    /「([^」]+)」/u,
+    /『([^』]+)』/u,
+    /“([^”]+)”/u,
+    /"([^"]+)"/u,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
   }
 
-  const quoteMatch = text.match(/["“](.+?)["”]/);
-  return quoteMatch ? quoteMatch[1].trim() : "";
+  return "";
 }
 
-function extractResourceTypeFromUrl(url) {
+function normalizeShareTitle(title, platform) {
+  const normalized = String(title || "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  if (platform === "bilibili") {
+    return normalized.replace(BILIBILI_TITLE_SUFFIX, "").trim();
+  }
+
+  return normalized;
+}
+
+function normalizeHostname(hostname) {
+  return String(hostname || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\.+$/, "");
+}
+
+function isDouyinHost(hostname) {
+  const normalized = normalizeHostname(hostname);
+  return DOUYIN_HOSTS.has(normalized) || normalized.endsWith(".douyin.com");
+}
+
+function isBilibiliHost(hostname) {
+  const normalized = normalizeHostname(hostname);
+  return (
+    BILIBILI_HOSTS.has(normalized) ||
+    normalized.endsWith(".bilibili.com") ||
+    normalized.endsWith(".b23.tv")
+  );
+}
+
+function detectPlatform(url) {
   try {
     const parsed = new URL(url);
-
-    if (/\/video\/\d+/.test(parsed.pathname)) {
-      return "video";
+    if (isDouyinHost(parsed.hostname)) {
+      return "douyin";
     }
 
-    if (/\/note\/\d+/.test(parsed.pathname)) {
-      return "note";
+    if (isBilibiliHost(parsed.hostname)) {
+      return "bilibili";
     }
   } catch {
     return "unknown";
@@ -61,28 +115,47 @@ function extractResourceTypeFromUrl(url) {
   return "unknown";
 }
 
-// 平台识别放在最前面做，后面每一层都只处理自己支持的平台，
-// 这样错误会更早暴露，不会把奇怪的链接一路带到详情抓取或下载层。
-function detectPlatform(url) {
+function isSupportedPlatform(platform) {
+  return platform === "douyin" || platform === "bilibili";
+}
+
+function normalizePositiveInteger(value, fallback = null) {
+  const numeric = Number.parseInt(String(value || ""), 10);
+  return Number.isInteger(numeric) && numeric > 0 ? numeric : fallback;
+}
+
+function extractResourceTypeFromUrl(url) {
   try {
     const parsed = new URL(url);
-    if (DOUYIN_HOSTS.has(parsed.hostname)) {
-      return "douyin";
+    const platform = detectPlatform(url);
+
+    if (platform === "douyin") {
+      if (/\/video\/\d+/u.test(parsed.pathname)) {
+        return "video";
+      }
+
+      if (/\/note\/\d+/u.test(parsed.pathname)) {
+        return "note";
+      }
     }
 
-    return "unknown";
+    if (platform === "bilibili" && /\/video\//iu.test(parsed.pathname)) {
+      return "video";
+    }
   } catch {
     return "unknown";
   }
+
+  return "unknown";
 }
 
 function getBestUrl(urls) {
-  const douyinUrl = urls.find((url) => detectPlatform(url) === "douyin");
-  return douyinUrl || urls[0] || null;
+  const supportedUrl = urls.find((url) => isSupportedPlatform(detectPlatform(url)));
+  return supportedUrl || urls[0] || null;
 }
 
 function pickShareCode(text) {
-  const match = text.match(/(^|\s)(\d+\.\d{1,2})\s/);
+  const match = text.match(/(^|\s)(\d+\.\d{1,2})\s/u);
   return match ? match[2] : "";
 }
 
@@ -129,12 +202,12 @@ function extractAwemeIdFromUrl(url) {
   try {
     const parsed = new URL(url);
 
-    const videoMatch = parsed.pathname.match(/\/video\/(\d+)/);
+    const videoMatch = parsed.pathname.match(/\/video\/(\d+)/u);
     if (videoMatch) {
       return videoMatch[1];
     }
 
-    const noteMatch = parsed.pathname.match(/\/note\/(\d+)/);
+    const noteMatch = parsed.pathname.match(/\/note\/(\d+)/u);
     if (noteMatch) {
       return noteMatch[1];
     }
@@ -142,7 +215,7 @@ function extractAwemeIdFromUrl(url) {
     const queryKeys = ["modal_id", "item_ids", "group_id", "aweme_id"];
     for (const key of queryKeys) {
       const value = parsed.searchParams.get(key);
-      if (value && /^\d+$/.test(value)) {
+      if (value && /^\d+$/u.test(value)) {
         return value;
       }
     }
@@ -153,44 +226,124 @@ function extractAwemeIdFromUrl(url) {
   return "";
 }
 
+function extractBilibiliIdsFromUrl(url) {
+  const fallback = {
+    bvid: "",
+    aid: "",
+    page: 1,
+  };
+
+  try {
+    const parsed = new URL(url);
+    const bvidMatch = parsed.pathname.match(/\/video\/(BV[0-9A-Za-z]+)/iu);
+    const aidMatch = parsed.pathname.match(/\/video\/av(\d+)/iu);
+
+    return {
+      bvid: bvidMatch ? bvidMatch[1] : "",
+      aid: aidMatch ? aidMatch[1] : "",
+      page: normalizePositiveInteger(parsed.searchParams.get("p"), 1),
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeResolvedUrl(url) {
+  const raw = String(url || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  try {
+    const platform = detectPlatform(raw);
+    if (platform === "bilibili") {
+      const { bvid, aid, page } = extractBilibiliIdsFromUrl(raw);
+      const resourceId = bvid || (aid ? `av${aid}` : "");
+      if (resourceId) {
+        const canonical = new URL(`https://www.bilibili.com/video/${resourceId}`);
+        canonical.searchParams.set("p", String(page || 1));
+        return canonical.toString();
+      }
+    }
+
+    return new URL(raw).toString();
+  } catch {
+    return raw;
+  }
+}
+
+function buildResolvedInfo({ selectedUrl, resolvedUrl, title }) {
+  const finalUrl = normalizeResolvedUrl(resolvedUrl || selectedUrl || "");
+  const platform =
+    detectPlatform(finalUrl) !== "unknown"
+      ? detectPlatform(finalUrl)
+      : detectPlatform(selectedUrl);
+  const resourceTypeHint = extractResourceTypeFromUrl(finalUrl || selectedUrl);
+  const awemeId = extractAwemeIdFromUrl(finalUrl) || extractAwemeIdFromUrl(selectedUrl);
+  const bilibiliFromFinalUrl = extractBilibiliIdsFromUrl(finalUrl);
+  const bilibiliFromSelectedUrl = extractBilibiliIdsFromUrl(selectedUrl);
+  const bilibiliInfo =
+    bilibiliFromFinalUrl.bvid || bilibiliFromFinalUrl.aid
+      ? bilibiliFromFinalUrl
+      : bilibiliFromSelectedUrl;
+  const resourceId =
+    platform === "douyin" ? awemeId : bilibiliInfo.bvid || bilibiliInfo.aid || "";
+
+  return {
+    platform,
+    finalUrl,
+    resourceId,
+    awemeId: platform === "douyin" ? awemeId : resourceId,
+    bvid: bilibiliInfo.bvid,
+    aid: bilibiliInfo.aid,
+    page: platform === "bilibili" ? bilibiliInfo.page : null,
+    title: normalizeShareTitle(title, platform),
+    resourceTypeHint,
+  };
+}
+
 function buildResponse({
   text,
   selectedUrl,
   resolvedUrl,
   title,
   shareCode,
-  awemeId,
   redirectInfo,
   includeDebug,
 }) {
-  const platform = selectedUrl ? detectPlatform(selectedUrl) : "unknown";
-  const finalUrl = resolvedUrl || selectedUrl || "";
-  const resourceTypeHint = extractResourceTypeFromUrl(finalUrl);
+  const resolved = buildResolvedInfo({
+    selectedUrl,
+    resolvedUrl,
+    title,
+  });
+
+  const hasResourceId = Boolean(resolved.resourceId);
+  const type =
+    resolved.resourceTypeHint !== "unknown"
+      ? resolved.resourceTypeHint
+      : hasResourceId && resolved.platform === "douyin"
+        ? "video_or_note"
+        : hasResourceId
+          ? "video"
+          : "unknown";
 
   const data = {
     parseId: `parse_${Date.now()}_${randomUUID().slice(0, 8)}`,
-    platform,
-    type:
-      resourceTypeHint !== "unknown"
-        ? resourceTypeHint
-        : awemeId
-          ? "video_or_note"
-          : "unknown",
+    platform:
+      detectPlatform(resolved.finalUrl) !== "unknown"
+        ? detectPlatform(resolved.finalUrl)
+        : detectPlatform(selectedUrl),
+    type,
     input: {
       rawText: text,
       shareCode,
       shareUrl: selectedUrl,
     },
-    resolved: {
-      finalUrl,
-      awemeId,
-      title: title || "",
-      resourceTypeHint,
-    },
-    status: awemeId ? "resolved" : "partial",
-    nextStep: awemeId
-      ? "可以继续调用作品详情抓取模块"
-      : "已提取链接，但还需要作品详情抓取模块补全信息",
+    resolved,
+    status: hasResourceId ? "resolved" : "partial",
+    nextStep: hasResourceId
+      ? "You can continue to fetch metadata or prepare a download."
+      : "The share URL was extracted, but the resource id is still missing.",
   };
 
   if (includeDebug) {
@@ -208,7 +361,7 @@ async function parseShareText(inputText, options = {}) {
   const logger = options.logger;
 
   if (!text) {
-    throw new ParseError("EMPTY_TEXT", "请输入抖音分享文案");
+    throw new ParseError("EMPTY_TEXT", "Please provide share text.");
   }
 
   const urls = extractUrls(text);
@@ -217,24 +370,29 @@ async function parseShareText(inputText, options = {}) {
   });
 
   if (urls.length === 0) {
-    throw new ParseError("NO_URL_FOUND", "未在文案中找到可解析链接");
+    throw new ParseError("NO_URL_FOUND", "No share URL was found in the text.");
   }
 
   const selectedUrl = getBestUrl(urls);
   if (!selectedUrl) {
-    throw new ParseError("NO_SUPPORTED_URL", "没有可用的分享链接");
+    throw new ParseError("NO_SUPPORTED_URL", "No usable share URL was found.");
   }
 
   const platform = detectPlatform(selectedUrl);
-  if (platform !== "douyin") {
-    throw new ParseError("UNSUPPORTED_PLATFORM", "当前版本仅支持抖音链接", 400, {
-      selectedUrl,
-      platform,
-    });
+  if (!isSupportedPlatform(platform)) {
+    throw new ParseError(
+      "UNSUPPORTED_PLATFORM",
+      "This version only supports Douyin and Bilibili share links.",
+      400,
+      {
+        selectedUrl,
+        platform,
+      },
+    );
   }
 
   const title = extractQuotedTitle(text);
-  const shareCode = pickShareCode(text);
+  const shareCode = platform === "douyin" ? pickShareCode(text) : "";
   let resolvedUrl = selectedUrl;
   let redirectInfo = {
     finalUrl: selectedUrl,
@@ -271,13 +429,23 @@ async function parseShareText(inputText, options = {}) {
     }
   }
 
-  const awemeId = extractAwemeIdFromUrl(resolvedUrl) || extractAwemeIdFromUrl(selectedUrl);
-  logger?.info("parse.aweme_id_result", {
+  const resolved = buildResolvedInfo({
     selectedUrl,
     resolvedUrl,
-    awemeId,
-    resourceTypeHint: extractResourceTypeFromUrl(resolvedUrl),
-    titleFound: Boolean(title),
+    title,
+  });
+
+  logger?.info("parse.resource_id_result", {
+    selectedUrl,
+    resolvedUrl,
+    platform,
+    resourceId: resolved.resourceId,
+    awemeId: resolved.awemeId,
+    bvid: resolved.bvid,
+    aid: resolved.aid,
+    page: resolved.page,
+    resourceTypeHint: resolved.resourceTypeHint,
+    titleFound: Boolean(resolved.title),
     shareCodeFound: Boolean(shareCode),
   });
 
@@ -287,7 +455,6 @@ async function parseShareText(inputText, options = {}) {
     resolvedUrl,
     title,
     shareCode,
-    awemeId,
     redirectInfo,
     includeDebug,
   });
@@ -300,10 +467,15 @@ module.exports = {
     normalizeText,
     extractUrls,
     extractQuotedTitle,
+    normalizeShareTitle,
     detectPlatform,
+    isSupportedPlatform,
     getBestUrl,
     pickShareCode,
+    followRedirects,
     extractAwemeIdFromUrl,
+    extractBilibiliIdsFromUrl,
+    normalizeResolvedUrl,
     extractResourceTypeFromUrl,
   },
 };
