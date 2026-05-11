@@ -30,61 +30,61 @@
       </header>
 
       <main class="dashboard">
-        <section class="panel panel-input">
-          <div class="panel-heading">
-            <div>
-              <p class="panel-kicker">Step 1</p>
-              <h2>分享文案解析</h2>
-            </div>
-            <div class="action-row" style="margin-top: 0">
-              <button id="fill-douyin-sample" class="ghost-button" type="button">
-                抖音示例
-              </button>
-              <button id="fill-bilibili-sample" class="ghost-button" type="button">
-                哔哩示例
-              </button>
-            </div>
-          </div>
-
-          <label class="field">
-            <span class="field-label">分享文案</span>
-            <textarea
-              id="share-text"
-              rows="7"
-              placeholder="把抖音或哔哩哔哩里复制出来的完整分享文案贴在这里"
-            ></textarea>
-          </label>
-
-          <div class="option-row">
-            <label class="checkbox">
-              <input id="resolve-redirect" type="checkbox" checked />
-              <span>展开短链跳转</span>
-            </label>
-            <label class="checkbox">
-              <input id="include-debug" type="checkbox" />
-              <span>返回调试信息</span>
-            </label>
-            <label class="checkbox">
-              <input id="fetch-metadata" type="checkbox" checked />
-              <span>解析后顺手抓详情</span>
-            </label>
-          </div>
-
-          <div class="action-row">
-            <button id="parse-button" class="primary-button" type="button">
-              开始解析
-            </button>
-            <button id="clear-button" class="ghost-button" type="button">
-              清空
-            </button>
-          </div>
-
-          <p id="status-bar" class="status-bar" aria-live="polite">
-            等待输入分享文案。
-          </p>
-        </section>
-
         <section class="results-grid">
+          <article class="panel panel-input">
+            <div class="panel-heading">
+              <div>
+                <p class="panel-kicker">Step 1</p>
+                <h2>分享文案解析</h2>
+              </div>
+              <div class="action-row" style="margin-top: 0">
+                <button id="fill-douyin-sample" class="ghost-button" type="button">
+                  抖音示例
+                </button>
+                <button id="fill-bilibili-sample" class="ghost-button" type="button">
+                  哔哩示例
+                </button>
+              </div>
+            </div>
+
+            <label class="field">
+              <span class="field-label">分享文案</span>
+              <textarea
+                id="share-text"
+                rows="5"
+                placeholder="把抖音或哔哩哔哩里复制出来的完整分享文案贴在这里"
+              ></textarea>
+            </label>
+
+            <div class="option-row">
+              <label class="checkbox">
+                <input id="resolve-redirect" type="checkbox" checked />
+                <span>展开短链跳转</span>
+              </label>
+              <label class="checkbox">
+                <input id="include-debug" type="checkbox" />
+                <span>返回调试信息</span>
+              </label>
+              <label class="checkbox">
+                <input id="fetch-metadata" type="checkbox" checked />
+                <span>解析后顺手抓详情</span>
+              </label>
+            </div>
+
+            <div class="action-row">
+              <button id="parse-button" class="primary-button" type="button">
+                开始解析
+              </button>
+              <button id="clear-button" class="ghost-button" type="button">
+                清空
+              </button>
+            </div>
+
+            <p id="status-bar" class="status-bar" aria-live="polite">
+              等待输入分享文案。
+            </p>
+          </article>
+
           <article class="panel">
             <div class="panel-heading">
               <div>
@@ -95,7 +95,10 @@
             <div id="parse-summary" class="summary-card empty-state">
               还没有解析结果。
             </div>
-            <pre id="parse-json" class="json-view empty-state">等待返回...</pre>
+            <details class="json-section">
+              <summary>接口返回信息</summary>
+              <pre id="parse-json" class="json-view empty-state">等待返回...</pre>
+            </details>
           </article>
 
           <article class="panel">
@@ -117,27 +120,44 @@
                 <select id="resource-select"></select>
               </label>
             </div>
-            <pre id="detail-json" class="json-view empty-state">等待返回...</pre>
+            <details class="json-section">
+              <summary>接口返回信息</summary>
+              <pre id="detail-json" class="json-view empty-state">等待返回...</pre>
+            </details>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="panel-kicker">Step 4</p>
+                <h2>下载票据</h2>
+              </div>
+              <button id="prepare-download" class="primary-button" type="button">
+                生成下载地址
+              </button>
+            </div>
+
+            <div id="download-summary" class="download-card empty-state">
+              先完成解析并获取详情，再生成下载票据。
+            </div>
+            <details class="json-section">
+              <summary>接口返回信息</summary>
+              <pre id="download-json" class="json-view empty-state">等待返回...</pre>
+            </details>
           </article>
         </section>
-
-        <section class="panel">
-          <div class="panel-heading">
-            <div>
-              <p class="panel-kicker">Step 4</p>
-              <h2>下载票据</h2>
-            </div>
-            <button id="prepare-download" class="primary-button" type="button">
-              生成下载地址
-            </button>
-          </div>
-
-          <div id="download-summary" class="download-card empty-state">
-            先完成解析并获取详情，再生成下载票据。
-          </div>
-          <pre id="download-json" class="json-view empty-state">等待返回...</pre>
-        </section>
       </main>
+
+      <footer class="site-footer">
+        <a
+          class="beian-link"
+          href="https://beian.miit.gov.cn/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          苏ICP备2024081843号
+        </a>
+      </footer>
     </div>
 
     <script src="/app.js"></script>

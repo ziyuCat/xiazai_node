@@ -48,6 +48,10 @@ function setStatus(message, tone = "normal") {
 function setJson(target, value) {
   target.textContent = value ? JSON.stringify(value, null, 2) : "等待返回...";
   target.classList.toggle("empty-state", !value);
+  const container = target.closest(".json-section");
+  if (container) {
+    container.open = false;
+  }
 }
 
 function escapeHtml(value) {
