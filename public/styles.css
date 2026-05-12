@@ -39,6 +39,48 @@ body {
   padding: 28px 0 48px;
 }
 
+.site-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 28px;
+  padding: 6px 0 0;
+}
+
+.beian-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 12px 18px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 13px;
+  line-height: 1.4;
+  transition:
+    color 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.beian-link:hover {
+  color: var(--primary-dark);
+  border-color: rgba(18, 185, 95, 0.28);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 12px 24px rgba(30, 64, 43, 0.08);
+  transform: translateY(-1px);
+}
+
+.beian-link:focus-visible {
+  outline: none;
+  border-color: rgba(18, 185, 95, 0.55);
+  box-shadow: 0 0 0 4px rgba(18, 185, 95, 0.12);
+}
+
 .hero {
   display: grid;
   grid-template-columns: 1.5fr 1fr;
@@ -183,7 +225,7 @@ select:focus {
 
 textarea {
   resize: vertical;
-  min-height: 180px;
+  min-height: 132px;
   line-height: 1.65;
 }
 
@@ -259,6 +301,7 @@ textarea {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 22px;
+  align-items: start;
 }
 
 .summary-card,
@@ -290,7 +333,7 @@ textarea {
 }
 
 .json-view {
-  margin: 0;
+  margin: 12px 0 0;
   padding: 18px;
   min-height: 220px;
   border-radius: var(--radius-lg);
@@ -303,6 +346,37 @@ textarea {
   font-family: var(--mono);
   font-size: 13px;
   line-height: 1.65;
+}
+
+.json-section {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.76);
+  padding: 14px 16px;
+}
+
+.json-section summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.json-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.json-section summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 8px;
+  color: var(--primary-dark);
+  transition: transform 0.18s ease;
+}
+
+.json-section[open] summary::before {
+  transform: rotate(90deg);
 }
 
 .empty-state {
@@ -349,6 +423,15 @@ textarea {
   .page-shell {
     width: min(100vw - 18px, 1180px);
     padding-top: 18px;
+  }
+
+  .site-footer {
+    margin-top: 22px;
+  }
+
+  .beian-link {
+    width: 100%;
+    text-align: center;
   }
 
   .hero-copy,

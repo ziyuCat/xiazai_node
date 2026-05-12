@@ -138,6 +138,31 @@ Invoke-RestMethod http://127.0.0.1:8787/health
 2. 查看作品详情和资源列表
 3. 生成下载票据并打开下载地址
 
+## Docker 部署
+
+项目已经补充 Docker 镜像构建文件：
+
+- `Dockerfile`
+- `.dockerignore`
+- `Docker部署说明.md`
+
+快速构建：
+
+```powershell
+docker build -t universal-downloader-backend:latest .
+```
+
+快速运行：
+
+```powershell
+docker run --name universal-downloader-backend `
+  -p 8787:8787 `
+  -e PUBLIC_BASE_URL=http://127.0.0.1:8787 `
+  universal-downloader-backend:latest
+```
+
+完整说明见 `Docker部署说明.md`。
+
 ## 接口说明
 
 ### `POST /api/parse`
