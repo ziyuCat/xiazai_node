@@ -71,7 +71,7 @@ function buildVideoFileName(detail, source) {
 
 function buildImageFileName(detail, image, index) {
   const title = sanitizeFileName(detail.title || detail.resourceId || detail.awemeId);
-  const ext = inferExtensionFromUrl(image.downloadUrl || image.url, "jpg");
+  const ext = inferExtensionFromUrl(image.url || image.downloadUrl, "jpg");
   return ensureExtension(`${title}-${index + 1}`, ext);
 }
 
@@ -121,7 +121,7 @@ function chooseAsset(detail, body) {
     });
   }
 
-  const downloadUrl = image.downloadUrl || image.url;
+  const downloadUrl = image.url || image.downloadUrl;
   if (!downloadUrl) {
     throw new ParseError(
       "IMAGE_URL_MISSING",
